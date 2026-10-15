@@ -13,6 +13,7 @@ export function Summary({ r, go }) {
   const serious = r.issues.filter((i) => i.severity === 'critical' || i.severity === 'high').length;
   const cards = [
     { t: 'JSON format', v: f.verdictCode === 'ndjson' ? 'Yes — NDJSON' : f.verdictCode === 'mixed' ? 'Mixed' : f.verdictCode === 'pretty' ? 'Pretty JSON' : 'No — plain text', sub: `${f.validJsonLines}/${f.nonEmptyLines} lines valid (${f.validPct}%)`, tone: f.verdictCode === 'ndjson' ? 'good' : f.verdictCode === 'mixed' ? 'warn' : 'bad', tab: 'format' },
+    ...(r.layout ? [{ t: 'Layout', v: `${r.layout.summary.compliancePct}%`, sub: `${r.layout.summary.fail} fail · ${r.layout.summary.warn} warn vs client layout`, tone: r.layout.summary.fail ? 'bad' : r.layout.summary.warn ? 'warn' : 'good', tab: 'layout' }] : []),
     { t: 'Issues', v: r.issues.length, sub: `${serious} serious`, tone: serious ? 'bad' : r.issues.length ? 'warn' : 'good', tab: 'issues' },
     { t: 'Entries', v: s.entries, sub: `${s.levels.ERROR + s.levels.FATAL} errors · ${s.levels.WARN} warnings`, tone: 'neutral', tab: 'entries' },
     { t: 'HTTP / API', v: `${r.http.exchanges.length} / ${r.apiCalls.length}`, sub: `${r.apiCalls.filter((c) => c.outcome.failed).length} failed calls`, tone: r.apiCalls.some((c) => c.outcome.failed) ? 'bad' : 'neutral', tab: 'http' },
@@ -22,6 +23,7 @@ export function Summary({ r, go }) {
   return (
     <div>
       <div className="cards">{cards.map((c) => <button key={c.t} className={`card tone-${c.tone}`} onClick={() => go(c.tab)}><div className="card-t">{c.t}</div><div className="card-v">{c.v}</div><div className="card-s">{c.sub}</div></button>)}</div>
+      {r.layout && <section className="panel"><h3>Layout</h3><p>{r.layout.summary.verdict} <button className="btn small" onClick={() => go('layout')}>Open Layout Check →</button></p></section>}
       <section className="panel story"><h3>What happened</h3><p>{r.story.text}</p><ul>{r.story.bullets.map((b) => <li key={b}>{b}</li>)}</ul></section>
       <section className="panel"><h3>Top issues</h3>{r.issues.length ? r.issues.slice(0, 5).map((i) => <IssueCard key={i.key} i={i} compact />) : <p className="muted">No issues detected.</p>}</section>
       {s.topSignatures.length > 0 && <section className="panel"><h3>Most repeated messages</h3><table className="tbl"><tbody>{s.topSignatures.slice(0, 8).map((x) => <tr key={x.sig}><td className="num">{x.count}×</td><td><Lvl l={x.level} /></td><td className="mono">{preview(x.example, 140)}</td></tr>)}</tbody></table></section>}

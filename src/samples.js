@@ -92,3 +92,35 @@ export const SAMPLES = [
   { id: 'outbound', name: 'Infobip call → 200 but REJECTED (NDJSON)', text: SAMPLE_OUTBOUND },
   { id: 'java', name: 'Java stack trace (plain text)', text: SAMPLE_JAVA },
 ];
+
+// ── Layout Check samples ─────────────────────────────────────────────────────
+import { CLIENT_LAYOUT_SAMPLE } from './lib/layout.js';
+export const SAMPLE_LAYOUT_CLIENT = CLIENT_LAYOUT_SAMPLE;
+
+// Raw logs as pasted by the customer — patterns (a)–(e). All numbers / ids are fake.
+const RL_A = '{"@timestamp":"2026-10-14 04:00:56,864","level":"DEBUG","component":"org.apache.synapse.transport.http.wire","message":"HTTP-Listener I/O dispatcher-10 >> "22e[\\r][\\n]""}';
+const RL_B = '{"@timestamp":"2026-10-15 05:59:08,662","level":"DEBUG","component":"org.apache.synapse.mediators.builtin.LogMediator","message":"{proxy:cpscallexecute} DOWNSTREAM_CALL = RESPONSE, API_NAME = X, RESPONSE_BODY = {"to":"923000000000","status":{"groupName":"REJECTED"}}, REQUEST_METHOD = POST"}';
+const RL_C = [
+  '{"@timestamp":"2026-10-15 05:59:09,101","level":"INFO","component":"org.apache.synapse.mediators.builtin.LogMediator","message":"{api:WABA_MENU} STEP = SEND_MENU, NOTE = first part of the message',
+  'second part after a raw newline, STATUS = OK"}',
+];
+const RL_D = [
+  '{"@timestamp":"2026-10-15 05:59:09,240","level":"INFO","component":"org.apache.synapse.mediators.builtin.LogMediator","message":{"API":"WABA_MENU","REQUEST_LOGGING":{"LOG_TYPE":"EVENT_LOG_REQUEST","CORRELATION_ID":"0b7c2f1e-5a9d-4c3b-8e21-6f4a9d0c7b13","TRAN_ID":"700000000001","INTERFACE":"MI_INCOMING","STAGE":"MI","TIMESTAMP":"2026-10-15 05:59:09","CHANNEL":"WhatsApp","SERVER_IP":"localhost","MSISDN":"923000000001","REQUEST_PAYLOAD":{',
+  '  "Transaction_Id":"700000000001",',
+  '  "Msisdn":"923000000001",',
+  '  "Message":"menu"',
+  '}}}}',
+];
+const RL_E = [
+  '{"@timestamp":"2026-10-15 05:59:08,500","level":"DEBUG","component":"org.apache.synapse.transport.http.headers","message":"http-incoming-106 >> POST /WABA/menu HTTP/1.1"}',
+  '{"@timestamp":"2026-10-15 05:59:08,501","level":"DEBUG","component":"org.apache.synapse.transport.http.headers","message":"http-incoming-106 >> Content-Type: application/json"}',
+];
+export const SAMPLE_LAYOUT_PATTERNS = { a: RL_A, b: RL_B, c: RL_C.join('\n'), d: RL_D.join('\n'), e: RL_E[0] };
+export const SAMPLE_RAW_PASTED = [RL_E[0], RL_E[1], RL_A, RL_B, ...RL_C, ...RL_D,
+  '{"@timestamp":"2026-10-15 05:59:09,300","level":"INFO","component":"org.wso2.micro.integrator.initializer.StartupFinalizer","message":"WSO2 Micro Integrator started in 4.90 seconds"}',
+].join('\n');
+
+SAMPLES.push(
+  { id: 'layout-client', name: 'Client expected layout (WSO2 MI JSON)', text: SAMPLE_LAYOUT_CLIENT },
+  { id: 'layout-raw', name: 'Raw logs as pasted (non-compliant)', text: SAMPLE_RAW_PASTED },
+);

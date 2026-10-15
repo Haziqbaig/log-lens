@@ -1,6 +1,7 @@
 import { analyze } from '../src/lib/analyze.js';
 import { toMarkdown } from '../src/lib/report.js';
-import { SAMPLE_INBOUND, SAMPLE_OUTBOUND, SAMPLE_JAVA } from '../src/samples.js';
+import { SAMPLE_INBOUND, SAMPLE_OUTBOUND, SAMPLE_JAVA, SAMPLE_LAYOUT_CLIENT, SAMPLE_LAYOUT_PATTERNS, SAMPLE_RAW_PASTED } from '../src/samples.js';
+import { checkLayout, inferLayout, fixedNDJSON, DEFAULT_SCHEMA } from '../src/lib/layout.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; console.log('  ✓', msg); } else { fail++; console.log('  ✗', msg); } };
@@ -53,6 +54,37 @@ const md = toMarkdown(b);
 ok(md.includes('# Log Lens report') && md.includes('REJECTED'), 'markdown report');
 const big = analyze(SAMPLE_OUTBOUND.split('\n').slice(0, 10).join('\n').concat('\n').repeat(3000));
 ok(big.entries.length === 30000, `30k lines analysed in ${big.elapsedMs} ms`);
+
+console.log('\n[e] layout check');
+const L0 = checkLayout(SAMPLE_LAYOUT_CLIENT, DEFAULT_SCHEMA);
+ok(L0.summary.fail === 0 && L0.summary.compliancePct === 100, `client sample 100% compliant (fail=${L0.summary.fail})`);
+const warns = L0.lines.flatMap((l) => l.violations);
+ok(warns.length > 0 && warns.every((v) => /msisdn/.test(v.code) || (v.code === 'pattern-mismatch' && /MSISDN/.test(v.path))), 'only MSISDN length warnings on client sample');
+ok(warns.some((v) => v.code === 'msisdn-mismatch'), 'MSISDN 11 vs 12 digits flagged');
+const La = checkLayout(SAMPLE_LAYOUT_PATTERNS.a);
+ok(La.lines[0].status === 'fail' && La.lines[0].violations.some((v) => v.code === 'unescaped-quotes' && v.col > 0), `(a) unescaped quotes at col ${La.lines[0].violations[0]?.col}`);
+ok(La.lines[0].fix && JSON.parse(La.lines[0].fix).message.includes('"22e'), '(a) suggested fix parses');
+const Lb = checkLayout(SAMPLE_LAYOUT_PATTERNS.b);
+ok(Lb.lines[0].violations.some((v) => v.code === 'unescaped-quotes') && JSON.parse(Lb.lines[0].fix).message.includes('REJECTED'), '(b) unescaped JSON in message, fix parses');
+const Lc = checkLayout(SAMPLE_LAYOUT_PATTERNS.c);
+ok(Lc.lines[0].violations.some((v) => v.code === 'raw-newline') && Lc.lines[1].role === 'cont', '(c) raw newline detected');
+ok(JSON.parse(Lc.lines[0].fix).message.includes('second part'), '(c) joined fix parses');
+const Ld = checkLayout(SAMPLE_LAYOUT_PATTERNS.d);
+const dv = Ld.lines[0].violations;
+ok(dv.some((v) => v.code === 'raw-newline') && Ld.lines.length === 5, '(d) multi-line entry joined');
+ok(dv.some((v) => v.code === 'missing-key' && v.key === 'LOG_LEVEL') && dv.some((v) => v.code === 'missing-key' && v.key === 'API_NAME'), '(d) missing LOG_LEVEL and API_NAME');
+ok(dv.some((v) => v.code === 'key-case' && v.found === 'API'), '(d) API vs api case difference');
+const Le = checkLayout(SAMPLE_LAYOUT_PATTERNS.e);
+ok(Le.lines[0].status === 'pass', '(e) http.headers string message passes');
+const Lr = checkLayout(SAMPLE_RAW_PASTED);
+ok(Lr.summary.fail > 0 && Lr.summary.verdict.length > 20, `raw verdict: ${Lr.summary.verdict}`);
+console.log(`  · client verdict: ${L0.summary.verdict}`);
+const fx = fixedNDJSON(Lr);
+ok(fx.text.split('\n').filter(Boolean).every((l) => { try { JSON.parse(l); return true; } catch { return false; } }), `fixed NDJSON all valid (${fx.included} lines, omitted ${fx.omitted.length})`);
+const learned = inferLayout(SAMPLE_LAYOUT_CLIENT);
+ok(learned.top.message.keys.REQUEST_LOGGING.keys.CORRELATION_ID.pattern === 'uuid' && learned.timestampPattern === 'ts-ms', 'inferLayout learns uuid + timestamp pattern');
+const ar = analyze(SAMPLE_RAW_PASTED, { layout: true });
+ok(ar.layout?.summary && toMarkdown(ar).includes('Layout check'), 'layout in analysis + markdown');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

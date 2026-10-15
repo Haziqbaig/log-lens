@@ -1,3 +1,4 @@
+import { checkLayout, DEFAULT_SCHEMA } from './layout.js';
 // Cross-entry analysis: HTTP exchanges, API calls, payloads, IDs, stats, issues, security, story.
 import { parseText } from './parse.js';
 import { extractEntry, parseHttpStream, RE_START_REQ, RE_START_RES } from './extract.js';
@@ -26,11 +27,17 @@ export function analyze(text, opts = {}) {
   const issues = buildIssues(entries, http, apiCalls, payloads);
   const security = buildSecurity(entries, http);
   const story = buildStory({ entries, http, apiCalls, payloads, issues, stats, formatCheck, ids });
+  let layout = null;
+  if (opts.layout !== false) {
+    layout = checkLayout(text, opts.schema || DEFAULT_SCHEMA);
+    layout.schemaSource = opts.schemaSource || (opts.schema ? 'custom' : 'client default');
+    story.bullets.push(`Layout: ${layout.summary.verdict}`);
+  }
 
   return {
     generatedAt: new Date().toISOString(),
     elapsedMs: Date.now() - t0,
-    formatCheck, entries, stats, http, apiCalls, payloads, ids, issues, security, story,
+    formatCheck, entries, stats, http, apiCalls, payloads, ids, issues, security, story, layout,
   };
 }
 

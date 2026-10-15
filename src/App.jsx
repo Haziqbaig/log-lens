@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SAMPLES } from './samples.js';
 import { toExportJSON, toMarkdown } from './lib/report.js';
 import { analyze } from './lib/analyze.js';
+import { LayoutTab } from './components/LayoutTab.jsx';
+import { inferLayout, fixedNDJSON, DEFAULT_SCHEMA, CLIENT_LAYOUT_SAMPLE } from './lib/layout.js';
 import { Summary, Issues, FormatCheck, HttpTab, Payloads, Entries, Security } from './components/Tabs.jsx';
 
 const TABS = [
-  ['summary', 'Summary'], ['issues', 'Issues'], ['format', 'JSON Format Check'], ['http', 'HTTP & API calls'],
+  ['summary', 'Summary'], ['issues', 'Issues'], ['format', 'JSON Format Check'], ['layout', 'Layout Check'], ['http', 'HTTP & API calls'],
   ['payloads', 'Payloads'], ['entries', 'Timeline / Entries'], ['security', 'Security'],
 ];
 
@@ -24,27 +26,32 @@ export default function App() {
   const [tab, setTab] = useState('summary');
   const [drag, setDrag] = useState(false);
   const [sample, setSample] = useState(SAMPLES[0].id);
+  const [layoutText, setLayoutText] = useState(CLIENT_LAYOUT_SAMPLE);
+  const [schema, setSchema] = useState(DEFAULT_SCHEMA);
+  const [schemaSource, setSchemaSource] = useState('client default');
+  const [schemaError, setSchemaError] = useState('');
   const worker = useRef(null);
   const bigText = useRef(null); // large files are not pushed into the textarea
 
   useEffect(() => () => worker.current?.terminate(), []);
 
-  const run = useCallback((input) => {
+  const run = useCallback((input, sch = schema, src0 = schemaSource, keepTab = false) => {
     const src = input ?? bigText.current ?? text;
     if (!src.trim()) { setError('Paste some logs, drop a file or load a sample first.'); return; }
     setBusy(true); setError('');
-    const done = (res) => { setResult(res); setTab('summary'); setBusy(false); };
+    const done = (res) => { setResult(res); if (!keepTab) setTab('summary'); setBusy(false); };
+    const opts = { schema: sch, schemaSource: src0 };
     try {
       worker.current?.terminate();
       const w = new Worker(new URL('./lib/worker.js', import.meta.url), { type: 'module' });
       worker.current = w;
       w.onmessage = (ev) => { w.terminate(); if (ev.data.ok) done(ev.data.result); else { setError(ev.data.error); setBusy(false); } };
-      w.onerror = (ev) => { w.terminate(); setError(`Worker failed (${ev.message}); running on main thread.`); setTimeout(() => done(analyze(src)), 10); };
-      w.postMessage({ text: src });
+      w.onerror = (ev) => { w.terminate(); setError(`Worker failed (${ev.message}); running on main thread.`); setTimeout(() => done(analyze(src, opts)), 10); };
+      w.postMessage({ text: src, ...opts });
     } catch {
-      setTimeout(() => { try { done(analyze(src)); } catch (e) { setError(String(e)); setBusy(false); } }, 10);
+      setTimeout(() => { try { done(analyze(src, opts)); } catch (e) { setError(String(e)); setBusy(false); } }, 10);
     }
-  }, [text]);
+  }, [text, schema, schemaSource]);
 
   const loadFile = async (file) => {
     if (!file) return;
@@ -55,11 +62,21 @@ export default function App() {
     run(t);
   };
 
+  const applySchema = (sch, label) => { setSchema(sch); setSchemaSource(label); setSchemaError(''); if (result) run(undefined, sch, label, true); };
+  const useDefault = () => { setLayoutText(CLIENT_LAYOUT_SAMPLE); applySchema(DEFAULT_SCHEMA, 'client default'); };
+  const learn = () => { const sch = inferLayout(layoutText); if (!sch.ok) { setSchemaError(sch.error); return; } applySchema(sch, `learned from ${sch.lines} line(s)${sch.skipped.length ? `, ${sch.skipped.length} skipped` : ''}`); };
+  const resetLayout = () => { setLayoutText(CLIENT_LAYOUT_SAMPLE); setSchemaError(''); applySchema(DEFAULT_SCHEMA, 'client default'); };
+  const downloadFixed = () => {
+    const f = fixedNDJSON(result.layout);
+    download('log-lens-fixed.ndjson', f.text, 'application/x-ndjson');
+    if (f.omitted.length) alert(`${f.included} line(s) written (${f.fixed} auto-fixed).\n${f.omitted.length} entr${f.omitted.length === 1 ? 'y' : 'ies'} could not be fixed and were left out: lines ${f.omitted.slice(0, 60).join(', ')}${f.omitted.length > 60 ? '…' : ''}`);
+  };
+
   const onDrop = (e) => { e.preventDefault(); setDrag(false); loadFile(e.dataTransfer.files?.[0]); };
   const loadSample = () => { const s = SAMPLES.find((x) => x.id === sample); bigText.current = null; setFileName(`sample: ${s.name}`); setText(s.text); run(s.text); };
   const clear = () => { bigText.current = null; setText(''); setFileName(''); setResult(null); setError(''); };
 
-  const counts = result && { issues: result.issues.length, payloads: result.payloads.length, entries: result.entries.length, security: result.security.findings.length, http: result.http.exchanges.length + result.apiCalls.length };
+  const counts = result && { issues: result.issues.length, payloads: result.payloads.length, entries: result.entries.length, security: result.security.findings.length, layout: result.layout?.summary.fail, http: result.http.exchanges.length + result.apiCalls.length };
 
   return (
     <div className="app">
@@ -90,6 +107,7 @@ export default function App() {
           {tab === 'summary' && <Summary r={result} go={setTab} />}
           {tab === 'issues' && <Issues r={result} />}
           {tab === 'format' && <FormatCheck r={result} />}
+          {tab === 'layout' && <LayoutTab r={result} layoutText={layoutText} setLayoutText={setLayoutText} schema={schema} schemaSource={schemaSource} schemaError={schemaError} onUseDefault={useDefault} onLearn={learn} onReset={resetLayout} onDownloadFixed={downloadFixed} />}
           {tab === 'http' && <HttpTab r={result} />}
           {tab === 'payloads' && <Payloads r={result} />}
           {tab === 'entries' && <Entries r={result} />}
